@@ -3,11 +3,13 @@ import {beforeUpdate} from 'svelte';
 
 let currentStore;
 let i = 0;
+let effects = [];
 
 export function wrap(fn) {
   let store = writable([]);
   currentStore = store;
   i = 0;
+  effects = [];
 
   let res = fn();
 
@@ -16,14 +18,19 @@ export function wrap(fn) {
     stores[key] = writable(res[key]);
   }
 
+  effects.forEach(fn => fn());
+
   store.subscribe(function () {
     currentStore = store;
     i = 0;
+    effects = [];
 
     let res = fn();
     for (let key in res) {
       stores[key].set(res[key]);
     }
+
+    effects.forEach(fn => fn());
 
     currentStore = null;
     i = 0;
@@ -87,12 +94,28 @@ function shallowEqualArrays(a, b) {
   return a.every((v, i) => b[i] === v);
 }
 
-export function useEffect() {
+export function useEffect(fn, deps) {
+  if (!currentStore) {
+    throw new Error('Hook called not in a component');
+  }
 
+  let store = get(currentStore);
+  let index = i++;
+
+  if (store[index] === undefined) {
+    effects.push(fn);
+    store[index] = deps;
+  } else {
+    let prevDeps = store[index];
+    if (!shallowEqualArrays(prevDeps, deps)) {
+      effects.push(fn);
+      store[index] = deps;
+    }
+  }
 }
 
-export function useLayoutEffect() {
-
+export function useLayoutEffect(fn, deps) {
+  useEffect(fn, deps)
 }
 
 export function useRef(value) {
