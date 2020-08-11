@@ -1,29 +1,43 @@
 import {writable, get} from 'svelte/store';
-import {beforeUpdate} from 'svelte';
+import {afterUpdate} from 'svelte';
 
 let currentStore;
 let i = 0;
+let effects = [];
+let layoutEffects = [];
 
 export function wrap(fn) {
   let store = writable([]);
-  currentStore = store;
-  i = 0;
-
-  let res = fn();
-
   let stores = {};
-  for (let key in res) {
-    stores[key] = writable(res[key]);
-  }
+  
+  let _effects = effects;
+  let _layoutEffects = layoutEffects;
+
+  afterUpdate(() => {
+    _layoutEffects.forEach(fn => fn());
+
+    requestAnimationFrame(() => {
+      _effects.forEach(fn => fn());
+    });
+  });
 
   store.subscribe(function () {
     currentStore = store;
     i = 0;
+    effects = [];
+    layoutEffects = [];
 
     let res = fn();
     for (let key in res) {
-      stores[key].set(res[key]);
+      if (!(key in stores)) {
+        stores[key] = writable(res[key]);
+      } else {
+        stores[key].set(res[key]);
+      }
     }
+
+    _effects = effects;
+    _layoutEffects = layoutEffects;
 
     currentStore = null;
     i = 0;
@@ -87,12 +101,37 @@ function shallowEqualArrays(a, b) {
   return a.every((v, i) => b[i] === v);
 }
 
-export function useEffect() {
-
+function _useEffectWithQueue(fn, deps, queue) {
+  if (!currentStore) {
+    throw new Error('Hook called not in a component');
+  }
+  
+  let store = get(currentStore);
+  let index = i++;
+  
+  if (store[index] === undefined) {
+    queue.push(() => {
+      store[index][0] = fn();
+    });
+    store[index] = [null, deps];
+  } else {
+    let [prevFn, prevDeps] = store[index];
+    if (!shallowEqualArrays(prevDeps, deps)) {
+      if (prevFn) queue.push(prevFn);
+      queue.push(() => {
+        store[index][0] = fn();
+      });
+      store[index] = [null, deps];
+    }
+  }
 }
 
-export function useLayoutEffect() {
+export function useEffect(fn, deps) {
+  _useEffectWithQueue(fn, deps, effects);
+}
 
+export function useLayoutEffect(fn, deps) {
+  _useEffectWithQueue(fn, deps, layoutEffects);
 }
 
 export function useRef(value) {
