@@ -1,36 +1,42 @@
 import {writable, get} from 'svelte/store';
-import {beforeUpdate} from 'svelte';
+import {afterUpdate} from 'svelte';
 
 let currentStore;
 let i = 0;
 let effects = [];
+let layoutEffects = [];
 
 export function wrap(fn) {
   let store = writable([]);
-  currentStore = store;
-  i = 0;
-  effects = [];
-
-  let res = fn();
-
   let stores = {};
-  for (let key in res) {
-    stores[key] = writable(res[key]);
-  }
+  
+  let _effects = effects;
+  let _layoutEffects = layoutEffects;
 
-  effects.forEach(fn => fn());
+  afterUpdate(() => {
+    _effects.forEach(fn => fn());
+  });
 
   store.subscribe(function () {
     currentStore = store;
     i = 0;
     effects = [];
+    layoutEffects = [];
 
     let res = fn();
     for (let key in res) {
-      stores[key].set(res[key]);
+      if (!(key in stores)) {
+        stores[key] = writable(res[key]);
+      } else {
+        stores[key].set(res[key]);
+      }
     }
 
-    effects.forEach(fn => fn());
+    _effects = effects;
+    _layoutEffects = layoutEffects;
+    requestAnimationFrame(() => {
+      _layoutEffects.forEach(fn => fn());
+    });
 
     currentStore = null;
     i = 0;
@@ -94,28 +100,37 @@ function shallowEqualArrays(a, b) {
   return a.every((v, i) => b[i] === v);
 }
 
-export function useEffect(fn, deps) {
+function _useEffectWithQueue(fn, deps, queue) {
   if (!currentStore) {
     throw new Error('Hook called not in a component');
   }
-
+  
   let store = get(currentStore);
   let index = i++;
-
+  
   if (store[index] === undefined) {
-    effects.push(fn);
-    store[index] = deps;
+    queue.push(() => {
+      store[index][0] = fn();
+    });
+    store[index] = [null, deps];
   } else {
-    let prevDeps = store[index];
+    let [prevFn, prevDeps] = store[index];
     if (!shallowEqualArrays(prevDeps, deps)) {
-      effects.push(fn);
-      store[index] = deps;
+      if (prevFn) queue.push(prevFn);
+      queue.push(() => {
+        store[index][0] = fn();
+      });
+      store[index] = [null, deps];
     }
   }
 }
 
+export function useEffect(fn, deps) {
+  _useEffectWithQueue(fn, deps, effects);
+}
+
 export function useLayoutEffect(fn, deps) {
-  useEffect(fn, deps)
+  _useEffectWithQueue(fn, deps, layoutEffects);
 }
 
 export function useRef(value) {
