@@ -14,7 +14,11 @@ export function wrap(fn) {
   let _layoutEffects = layoutEffects;
 
   afterUpdate(() => {
-    _effects.forEach(fn => fn());
+    _layoutEffects.forEach(fn => fn());
+
+    requestAnimationFrame(() => {
+      _effects.forEach(fn => fn());
+    });
   });
 
   store.subscribe(function () {
@@ -34,9 +38,6 @@ export function wrap(fn) {
 
     _effects = effects;
     _layoutEffects = layoutEffects;
-    requestAnimationFrame(() => {
-      _layoutEffects.forEach(fn => fn());
-    });
 
     currentStore = null;
     i = 0;
