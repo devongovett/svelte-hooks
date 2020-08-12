@@ -1,5 +1,7 @@
 import {writable, get} from 'svelte/store';
-import {afterUpdate} from 'svelte';
+import {setContext, afterUpdate} from 'svelte';
+import ContextProvider from './context/Provider.svelte';
+import ContextConsumer from './context/Consumer.svelte';
 
 let currentStore;
 let i = 0;
@@ -140,16 +142,69 @@ export function useRef(value) {
   }
 }
 
-export function useContext() {
+export function useContext(context) {
+  if (!currentStore) {
+    throw new Error('Hook called not in a component');
+  }
 
+  let s = currentStore;
+  let store = get(currentStore);
+  let index = i++;
+
+  if (store[index] === undefined) {
+    let initial = true;
+    context.__store.subscribe(value => {
+      store[index] = value;
+      if (initial) {
+        initial = false;
+      } else {
+        s.set(store);
+      }
+    });
+  }
+
+  return store[index];
 }
 
 export function useCallback(cb, deps) {
   return useMemo(() => cb, deps);
 }
 
-export function createContext() {
-  return {};
+export function createContext(initialValue) {
+  let store = writable(initialValue);
+  const key = Symbol();
+
+  class Provider extends ContextProvider {
+    constructor(options) {
+      super({
+        ...options,
+        props: {
+          ...options.props,
+          key,
+          store,
+          value: initialValue,
+        },
+      });
+    }
+  }
+
+  class Consumer extends ContextConsumer {
+    constructor(options) {
+      super({
+        ...options,
+        props: {
+          ...options.props,
+          key,
+        },
+      });
+    }
+  }
+
+  return {
+    __store: store,
+    Provider,
+    Consumer,
+  };
 }
 
 export function forwardRef() {
