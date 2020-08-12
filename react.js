@@ -64,7 +64,11 @@ export function useState(initialValue) {
   }
 
   let setValue = v => {
-    store[index] = v;
+    let nextState = v;
+    if (typeof nextState === 'function') {
+      nextState = nextState(store[index]);
+    }
+    store[index] = nextState;
     s.set(store);
   };
 
