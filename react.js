@@ -75,6 +75,32 @@ export function useState(initialValue) {
   return [store[index], setValue];
 }
 
+export function useReducer(reducer, initialArg, init) {
+  if (!currentStore) {
+    throw new Error('Hook called not in a component');
+  }
+
+  let s = currentStore;
+  let store = get(currentStore);
+  let index = i++;
+
+  if (store.length <= index) {
+    let initialValue = initialArg;
+    if (typeof init === 'function') {
+      initialValue = init(initialArg);
+    }
+    store[index] = initialValue;
+  }
+
+  let dispatch = action => {
+    let nextState = reducer(store[index], action);
+    store[index] = nextState;
+    s.set(store);
+  };
+
+  return [store[index], dispatch];
+}
+
 export function useMemo(fn, deps) {
   if (!currentStore) {
     throw new Error('Hook called not in a component');
