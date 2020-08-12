@@ -140,10 +140,19 @@ export function useLayoutEffect(fn, deps) {
   _useEffectWithQueue(fn, deps, layoutEffects);
 }
 
-export function useRef(value) {
-  return {
-    current: value
+export function useRef(initialValue) {
+  if (!currentStore) {
+    throw new Error('Hook called not in a component');
   }
+  
+  let store = get(currentStore);
+  let index = i++;
+
+  if (store.length <= index) {
+    store[index] = { current: initialValue };
+  }
+
+  return store[index];
 }
 
 export function useContext(context) {
