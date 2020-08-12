@@ -59,7 +59,10 @@ export function useState(initialValue) {
   let store = get(currentStore);
   let index = i++;
 
-  if (store[index] === undefined) {
+  if (store.length <= index) {
+    if (typeof initialValue === 'function') {
+      initialValue = initialValue();
+    }
     store[index] = initialValue;
   }
 
