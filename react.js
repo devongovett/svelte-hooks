@@ -10,16 +10,16 @@ let layoutEffects = [];
 
 export function wrap(fn) {
   let store = writable([]);
-  let stores = {};
-  
+  let stores;
+
   let _effects = effects;
   let _layoutEffects = layoutEffects;
 
   afterUpdate(() => {
-    _layoutEffects.forEach(fn => fn());
+    _layoutEffects.forEach((fn) => fn());
 
     requestAnimationFrame(() => {
-      _effects.forEach(fn => fn());
+      _effects.forEach((fn) => fn());
     });
   });
 
@@ -30,11 +30,28 @@ export function wrap(fn) {
     layoutEffects = [];
 
     let res = fn();
-    for (let key in res) {
-      if (!(key in stores)) {
-        stores[key] = writable(res[key]);
-      } else {
-        stores[key].set(res[key]);
+
+    if (Array.isArray(res)) {
+      if (stores === undefined) {
+        stores = [];
+      }  
+      for (const key of res) {
+        if (stores[key] === undefined) {
+          stores[key] = writable(res[key]);
+        } else {
+          stores[key].set(res[key]);
+        }
+      }
+    } else {
+      if (stores === undefined) {
+        stores = {};
+      } 
+      for (let key in res) {
+        if (!(key in stores)) {
+          stores[key] = writable(res[key]);
+        } else {
+          stores[key].set(res[key]);
+        }
       }
     }
 
@@ -143,7 +160,7 @@ function _useEffectWithQueue(fn, deps, queue) {
   
   let store = get(currentStore);
   let index = i++;
-  
+
   if (store[index] === undefined) {
     queue.push(() => {
       store[index][0] = fn();
