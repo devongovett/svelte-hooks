@@ -31,15 +31,27 @@ export function wrap(fn) {
 
     let res = fn();
 
-    if (stores === undefined) {
-      stores = Array.isArray(res) ? [] : {};
-    }
-
-    for (let key in res) {
-      if (!(key in stores)) {
-        stores[key] = writable(res[key]);
-      } else {
-        stores[key].set(res[key]);
+    if (Array.isArray(res)) {
+      if (stores === undefined) {
+        stores = [];
+      }  
+      for (const key of res) {
+        if (stores[key] === undefined) {
+          stores[key] = writable(res[key]);
+        } else {
+          stores[key].set(res[key]);
+        }
+      }
+    } else {
+      if (stores === undefined) {
+        stores = {};
+      } 
+      for (let key in res) {
+        if (!(key in stores)) {
+          stores[key] = writable(res[key]);
+        } else {
+          stores[key].set(res[key]);
+        }
       }
     }
 
