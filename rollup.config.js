@@ -6,6 +6,7 @@ import resolve from "rollup-plugin-node-resolve";
 import commonjs from "rollup-plugin-commonjs";
 import { terser } from "rollup-plugin-terser";
 import alias from "@rollup/plugin-alias";
+import sveltePreprocess from 'svelte-preprocess';
 
 const production = !process.env.ROLLUP_WATCH;
 
@@ -25,7 +26,8 @@ export default {
       // a separate file — better for performance
       css: (css) => {
         css.write("public/bundle.css");
-      }
+      },
+      preprocess: sveltePreprocess({ postcss: true })
     }),
 
     // If you have external dependencies installed from
@@ -37,7 +39,10 @@ export default {
     commonjs(),
 
     alias({
-      entries: [{ find: "react", replacement: require.resolve("./react") }]
+      entries: {
+        react: require.resolve("./react"),
+        'react-dom': require.resolve("./react-dom")
+      }
     }),
 
     // If we're building for production (npm run build

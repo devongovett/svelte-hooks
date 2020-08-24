@@ -1,5 +1,5 @@
 import {writable, get} from 'svelte/store';
-import {setContext, afterUpdate} from 'svelte';
+import {setContext, afterUpdate, onDestroy, beforeUpdate} from 'svelte';
 import ContextProvider from './context/Provider.svelte';
 import ContextConsumer from './context/Consumer.svelte';
 
@@ -8,91 +8,57 @@ let i = 0;
 let effects = [];
 let layoutEffects = [];
 
-export function wrap(fn) {
+export function createHooks() {
   let store = writable([]);
-  let stores;
-
-  let _effects = effects;
-  let _layoutEffects = layoutEffects;
+  let _effects = [];
+  let _layoutEffects = [];
 
   afterUpdate(() => {
     _layoutEffects.forEach((fn) => fn());
+    _layoutEffects = [];
 
     requestAnimationFrame(() => {
       _effects.forEach((fn) => fn());
+      _effects = [];
     });
   });
 
-  store.subscribe(function () {
-    currentStore = store;
-    i = 0;
-    effects = [];
-    layoutEffects = [];
-
-    let res = fn();
-
-    if (Array.isArray(res)) {
-      if (stores === undefined) {
-        stores = [];
-      }  
-      for (const key of res) {
-        if (stores[key] === undefined) {
-          stores[key] = writable(res[key]);
-        } else {
-          stores[key].set(res[key]);
-        }
-      }
-    } else {
-      if (stores === undefined) {
-        stores = {};
-      } 
-      for (let key in res) {
-        if (!(key in stores)) {
-          stores[key] = writable(res[key]);
-        } else {
-          stores[key].set(res[key]);
-        }
-      }
+  let isUpdating = false;
+  let fn;
+  let update = () => {
+    if (isUpdating || !fn) {
+      return;
     }
 
-    _effects = effects;
-    _layoutEffects = layoutEffects;
+    currentStore = store;
+    i = 0;
+    effects = _effects;
+    layoutEffects = _layoutEffects;
+    isUpdating = true;
+
+    fn();
 
     currentStore = null;
+    isUpdating = false;
     i = 0;
-  });
+  };
 
-  currentStore = null;
+  store.subscribe(update);
 
-  return stores;
+  return (f) => {
+    fn = f;
+    update();
+  };
 }
 
 export function useState(initialValue) {
-  if (!currentStore) {
-    throw new Error('Hook called not in a component');
-  }
-
-  let s = currentStore;
-  let store = get(currentStore);
-  let index = i++;
-
-  if (store.length <= index) {
-    if (typeof initialValue === 'function') {
-      initialValue = initialValue();
+  return useReducer((cur, next) => {
+    if (typeof next === 'function') {
+      next = next(cur);
     }
-    store[index] = initialValue;
-  }
 
-  let setValue = v => {
-    let nextState = v;
-    if (typeof nextState === 'function') {
-      nextState = nextState(store[index]);
-    }
-    store[index] = nextState;
-    s.set(store);
-  };
-
-  return [store[index], setValue];
+    return next;
+  }, initialValue);
 }
 
 export function useReducer(reducer, initialArg, init) {
@@ -109,16 +75,22 @@ export function useReducer(reducer, initialArg, init) {
     if (typeof init === 'function') {
       initialValue = init(initialArg);
     }
-    store[index] = initialValue;
+
+    let dispatch = action => {
+      let prev = store[index][0];
+      let nextState = reducer(prev, action);
+      if (nextState === prev) {
+        return;
+      }
+
+      store[index] = [nextState, dispatch];
+      s.set(store);
+    };
+
+    store[index] = [initialValue, dispatch];
   }
 
-  let dispatch = action => {
-    let nextState = reducer(store[index], action);
-    store[index] = nextState;
-    s.set(store);
-  };
-
-  return [store[index], dispatch];
+  return store[index];
 }
 
 export function useMemo(fn, deps) {
@@ -129,7 +101,7 @@ export function useMemo(fn, deps) {
   let store = get(currentStore);
   let index = i++;
 
-  if (store[index] === undefined) {
+  if (store.length <= index) {
     let val = fn();
     store[index] = [val, deps];
     return val;
@@ -157,21 +129,33 @@ function _useEffectWithQueue(fn, deps, queue) {
   if (!currentStore) {
     throw new Error('Hook called not in a component');
   }
-  
+
   let store = get(currentStore);
   let index = i++;
 
-  if (store[index] === undefined) {
+  if (store.length <= index) {
     queue.push(() => {
-      store[index][0] = fn();
+      let res = fn();
+      if (typeof res === 'function') {
+        store[index][0] = res;
+      }
     });
     store[index] = [null, deps];
+
+    onDestroy(() => {
+      if (store[index][0]) {
+        store[index][0]();
+      }
+    });
   } else {
     let [prevFn, prevDeps] = store[index];
-    if (!shallowEqualArrays(prevDeps, deps)) {
+    if (!prevDeps || !deps || !shallowEqualArrays(prevDeps, deps)) {
       if (prevFn) queue.push(prevFn);
       queue.push(() => {
-        store[index][0] = fn();
+        let res = fn();
+        if (typeof res === 'function') {
+          store[index][0] = res;
+        }
       });
       store[index] = [null, deps];
     }
@@ -187,18 +171,8 @@ export function useLayoutEffect(fn, deps) {
 }
 
 export function useRef(initialValue) {
-  if (!currentStore) {
-    throw new Error('Hook called not in a component');
-  }
-  
-  let store = get(currentStore);
-  let index = i++;
-
-  if (store.length <= index) {
-    store[index] = { current: initialValue };
-  }
-
-  return store[index];
+  let [v] = useState({current: initialValue});
+  return v;
 }
 
 export function useContext(context) {
@@ -210,7 +184,7 @@ export function useContext(context) {
   let store = get(currentStore);
   let index = i++;
 
-  if (store[index] === undefined) {
+  if (store.length <= index) {
     let initial = true;
     context.__store.subscribe(value => {
       store[index] = value;
@@ -272,5 +246,11 @@ export function forwardRef() {
 
 export default {
   createContext,
-  forwardRef
+  forwardRef,
+  isValidElement(v) { return !!v;},
+  Children: {
+    forEach(children, fn) {
+      children.forEach(fn);
+    }
+  }
 };

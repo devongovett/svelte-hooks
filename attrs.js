@@ -3,14 +3,21 @@ export function attrs(node, props) {
     for (let key in update) {
       if (/^on[A-Z]/.test(key)) {
         let event = key.slice(2).toLowerCase();
+        let capture = false;
+        if (key.endsWith('Capture')) {
+          capture = true;
+          event = event.slice(0, -7);
+        }
 
         if (props[key] != null && (update[key] == null || update[key] !== props[key])) {
-          node.removeEventListener(event, props[key]);
+          node.removeEventListener(event, props[key], capture);
         }
 
         if (update[key] != null) {
-          node.addEventListener(event, update[key]);
+          node.addEventListener(event, update[key], capture);
         }
+      } else if (key === 'style') {
+        Object.assign(node.style, update[key]);
       } else {
         if (update[key] == null) {
           node.removeAttribute(key);
