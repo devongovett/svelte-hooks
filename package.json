@@ -1,5 +1,5 @@
 {
-  "name": "svelte",
+  "name": "svelte-hooks",
   "version": "1.0.0",
   "devDependencies": {
     "@fullhuman/postcss-purgecss": "^2.3.0",
